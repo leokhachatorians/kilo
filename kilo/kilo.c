@@ -6,7 +6,7 @@ void enable_raw_mode() {
 
     tcgetattr(STDIN_FILENO, &raw);
 
-    // = AND complement(echo)
+    // = AND NOT(echo)
     raw.c_lflag &= ~(ECHO);
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
