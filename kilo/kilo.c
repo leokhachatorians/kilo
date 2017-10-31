@@ -7,6 +7,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#define KILO_VERSION "0.0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define ABUF_INIT {NULL, 0}
 
@@ -22,6 +23,21 @@ struct abuf {
     char *b;
     int len;
 };
+
+void ab_append(struct abuf *ab, const char *s, int len) {
+    char *new = realloc(ab->b, ab->len + len);
+
+    if (new == NULL) {
+        return;
+    }
+    memcpy(&new[ab->len], s, len);
+    ab->b = new;
+    ab->len += len;
+}
+
+void ab_free(struct abuf *ab) {
+    free(ab->b);
+}
 
 void die(const char *s) {
     write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -128,24 +144,51 @@ void editor_process_key_press() {
     }
 }
 
-void editor_draw_rows() {
+void editor_draw_rows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screen_rows; y++) {
-        write(STDOUT_FILENO, "~", 1);
+        if (y == E.screen_rows / 3) {
+            char welcome[80];
+            int welcome_len = snprintf(welcome, sizeof(welcome),
+                    "Kilo editor -- version %s", KILO_VERSION);
+            if (welcome_len > E.screen_rows) {
+                welcome_len = E.screen_rows;
+            };
+            int padding = (E.screen_cols - welcome_len) / 2;
+            if (padding) {
+                ab_append(ab, "~", 1);
+                padding--;
+            }
+            while (padding--) {
+                ab_append(ab, " ", 1);
+            }
+            ab_append(ab, welcome, welcome_len);
+        }
+        else {
+            ab_append(ab, "~", 1);
+        }
+
+        ab_append(ab, "\x1b[K", 3);
 
         if (y < E.screen_rows - 1) {
-            write(STDOUT_FILENO, "\r\n", 2);
+            ab_append(ab, "\r\n", 2);
         }
     }
 }
 
 void editor_refresh_screen() {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    struct abuf ab = ABUF_INIT;
 
-    editor_draw_rows();
+    ab_append(&ab, "\x1b[?25l", 6);
+    ab_append(&ab, "\x1b[H", 3);
 
-    write(STDIN_FILENO, "\x1b[H", 3);
+    editor_draw_rows(&ab);
+
+    ab_append(&ab, "\x1b[H", 3);
+    ab_append(&ab, "\x1b[?25h", 6);
+
+    write(STDOUT_FILENO, ab.b, ab.len);
+    ab_free(&ab);
 }
 
 void init_editor() {
